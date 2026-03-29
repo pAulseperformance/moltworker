@@ -57,10 +57,14 @@ export function createAccessMiddleware(options: AccessMiddlewareOptions) {
     }
 
     const teamDomain = c.env.CF_ACCESS_TEAM_DOMAIN;
-    const expectedAud = c.env.CF_ACCESS_AUD;
+    // Support comma-separated AUDs so multiple CF Access apps work
+    const expectedAuds = (c.env.CF_ACCESS_AUD ?? '')
+      .split(',')
+      .map((a) => a.trim())
+      .filter(Boolean);
 
     // Check if CF Access is configured
-    if (!teamDomain || !expectedAud) {
+    if (!teamDomain || expectedAuds.length === 0) {
       if (type === 'json') {
         return c.json(
           {
@@ -116,12 +120,19 @@ export function createAccessMiddleware(options: AccessMiddlewareOptions) {
       }
     }
 
-    // Verify JWT
-    try {
-      const payload = await verifyAccessJWT(jwt, teamDomain, expectedAud);
-      c.set('accessUser', { email: payload.email, name: payload.name });
-      await next();
-    } catch (err) {
+    // Verify JWT — try each configured AUD until one succeeds
+    let lastErr: unknown;
+    for (const aud of expectedAuds) {
+      try {
+        const payload = await verifyAccessJWT(jwt, teamDomain, aud);
+        c.set('accessUser', { email: payload.email, name: payload.name });
+        return next();
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    const err = lastErr;
+    {
       console.error('Access JWT verification failed:', err);
 
       if (type === 'json') {
@@ -133,13 +144,17 @@ export function createAccessMiddleware(options: AccessMiddlewareOptions) {
           401,
         );
       } else {
+        const errMsg = err instanceof Error ? err.message : String(err);
         return c.html(
           `
           <html>
             <body>
               <h1>Unauthorized</h1>
               <p>Your Cloudflare Access session is invalid or expired.</p>
-              <a href="https://${teamDomain}">Login again</a>
+              <pre style="background:#111;color:#f88;padding:1em;font-size:12px">${errMsg}</pre>
+              <p>AUD configured: ${expectedAuds.map(a => a.slice(0, 8)).join(', ')}...</p>
+              <p>Team domain: ${teamDomain}</p>
+              <a href="https://moltbot-sandbox.admin-1e3.workers.dev/_admin">Login again</a>
             </body>
           </html>
         `,

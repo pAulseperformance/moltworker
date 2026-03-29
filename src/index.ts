@@ -117,6 +117,22 @@ function buildSandboxOptions(env: MoltbotEnv): SandboxOptions {
 // Main app
 const app = new Hono<AppEnv>();
 
+// Global error handler — surfaces the real crash message for debugging
+app.onError((err, c) => {
+  console.error('[UNHANDLED ERROR]', err.message, err.stack);
+  const isHtml = c.req.header('Accept')?.includes('text/html');
+  if (isHtml) {
+    return c.html(
+      `<html><body style="font-family:monospace;padding:2em;background:#111;color:#f88">
+        <h2>Worker Error</h2>
+        <pre style="background:#1a1a1a;padding:1em;border-radius:4px">${err.message}\n\n${err.stack ?? ''}</pre>
+      </body></html>`,
+      500,
+    );
+  }
+  return c.json({ error: err.message, stack: err.stack }, 500);
+});
+
 // =============================================================================
 // MIDDLEWARE: Applied to ALL routes
 // =============================================================================
@@ -231,6 +247,14 @@ app.all('*', async (c) => {
   const request = c.req.raw;
   const url = new URL(request.url);
 
+  // Auto-inject gateway token via HTTP redirect for known UI paths
+  const pathname = url.pathname;
+  if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token') && (pathname === '/' || pathname === '/chat')) {
+    const redirectUrl = new URL(url.toString());
+    redirectUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
+    return c.redirect(redirectUrl.toString(), 302);
+  }
+
   console.log('[PROXY] Handling request:', url.pathname);
 
   // Check if gateway is already running
@@ -289,18 +313,8 @@ app.all('*', async (c) => {
       console.log('[WS] URL:', url.pathname + redactedSearch);
     }
 
-    // Inject gateway token into WebSocket request if not already present.
-    // CF Access redirects strip query params, so authenticated users lose ?token=.
-    // Since the user already passed CF Access auth, we inject the token server-side.
-    let wsRequest = request;
-    if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token')) {
-      const tokenUrl = new URL(url.toString());
-      tokenUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
-      wsRequest = new Request(tokenUrl.toString(), request);
-    }
-
     // Get WebSocket connection to the container
-    const containerResponse = await sandbox.wsConnect(wsRequest, MOLTBOT_PORT);
+    const containerResponse = await sandbox.wsConnect(request, MOLTBOT_PORT);
     console.log('[WS] wsConnect response status:', containerResponse.status);
 
     // Get the container-side WebSocket
