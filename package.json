@@ -9,6 +9,7 @@
     "deploy": "npm run build && wrangler deploy",
     "dev": "vite dev",
     "start": "wrangler dev",
+    "setup": "node scripts/setup.js",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/",
