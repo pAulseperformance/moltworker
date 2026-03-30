@@ -117,13 +117,38 @@ async function main() {
   console.log('\nStep 6: Deploying Moltbot to Cloudflare Edge...');
   await runCommand('npm install', 'Failed to install NPM packages.');
   await runCommand('npm run build', 'Failed to build the generic UI frontend.');
-  await runCommand('npx wrangler deploy', 'Deployment failed!');
+  
+  let baseUrl = '<YOUR_CLOUDFLARE_WORKER_URL>';
+  console.log(`\n> npx wrangler deploy`);
+  await new Promise((resolve, reject) => {
+    const spawn = require('child_process').spawn;
+    const deployProc = spawn('npx', ['wrangler', 'deploy'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    
+    deployProc.stdout.on('data', (data) => {
+      const text = data.toString();
+      process.stdout.write(text);
+      const match = text.match(/https:\/\/[a-zA-Z0-9-_.]+\.workers\.dev/);
+      if (match) baseUrl = match[0];
+    });
+    
+    deployProc.stderr.on('data', (data) => {
+      const text = data.toString();
+      process.stderr.write(text);
+      const match = text.match(/https:\/\/[a-zA-Z0-9-_.]+\.workers\.dev/);
+      if (match) baseUrl = match[0];
+    });
+    
+    deployProc.on('close', (code) => {
+      if (code === 0) resolve();
+      else console.error(`\n❌ Deployment failed with code ${code}`); // do not reject so we at least print the warning
+    });
+  });
 
   console.log('\n=============================================');
   console.log('🚀 DEPLOYMENT COMPLETE!');
-  console.log(`To use your personal assistant, append your gateway token:`);
-  console.log(`?token=${gatewayToken}`);
-  console.log('Make sure to whitelist your email in the Zero Trust Dashboard to access /_admin');
+  console.log(`To use your personal assistant, click this link:`);
+  console.log(`\x1b[36m${baseUrl}?token=${gatewayToken}\x1b[0m`);
+  console.log('\nMake sure to whitelist your email in the Zero Trust Dashboard to access /_admin');
   console.log('=============================================\n');
 
   rl.close();
