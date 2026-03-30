@@ -271,8 +271,16 @@ if r2_configured; then
     echo "Starting background R2 sync loop..."
     (
         MARKER=/tmp/.last-sync-marker
+        
+        # Touch marker BEFORE we start infinite loop.
+        # Ensure any file modified AFTER the node patch is caught.
+        # Note: the patch script already modified openclaw.json before this block.
+        # But wait! If we want the patched openclaw.json to be synced on the first run,
+        # we must make sure its modification time is NEWER than the marker BEFORE the loop!
+        # Actually, let's just touch the marker with an OLD time so the first sync catches everything!
+        touch -t 200001010000 "$MARKER"
+        
         LOGFILE=/tmp/r2-sync.log
-        touch "$MARKER"
 
         while true; do
             sleep 30

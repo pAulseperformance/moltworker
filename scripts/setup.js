@@ -80,9 +80,11 @@ async function main() {
     const cfAiKey = await ask('Enter CLOUDFLARE_AI_GATEWAY_API_KEY: ');
     const cfAiAccount = await ask('Enter CF_AI_GATEWAY_ACCOUNT_ID: ');
     const cfAiGateway = await ask('Enter CF_AI_GATEWAY_GATEWAY_ID: ');
+    const cfAiModel = await ask('Enter CF_AI_GATEWAY_MODEL (e.g. anthropic/claude-3-5-sonnet-20241022 या openai/gpt-4o): ');
     if (cfAiKey) await putSecret('CLOUDFLARE_AI_GATEWAY_API_KEY', cfAiKey.trim());
     if (cfAiAccount) await putSecret('CF_AI_GATEWAY_ACCOUNT_ID', cfAiAccount.trim());
     if (cfAiGateway) await putSecret('CF_AI_GATEWAY_GATEWAY_ID', cfAiGateway.trim());
+    if (cfAiModel) await putSecret('CF_AI_GATEWAY_MODEL', cfAiModel.trim());
   } else if (aiChoice === '2') {
     const oaiKey = await ask('Enter OPENAI_API_KEY: ');
     if (oaiKey) await putSecret('OPENAI_API_KEY', oaiKey.trim());
@@ -100,6 +102,15 @@ async function main() {
     console.log('✅ Created R2 bucket: moltbot-data');
   } catch (e) {
     console.log('✅ R2 bucket "moltbot-data" already exists.');
+    const resetConfig = await ask('\nDo you want to clear your remote AI configuring to apply these new keys? (Recommended if changing providers) [y/N]: ');
+    if (resetConfig.toLowerCase().startsWith('y')) {
+      try {
+        execSync('npx wrangler r2 object delete moltbot-data/openclaw/openclaw.json', { stdio: 'ignore' });
+        console.log('✅ Remote OpenClaw configuration cleared.');
+      } catch (err) {
+        // file un-deletable or missing
+      }
+    }
   }
 
   // Deployment
