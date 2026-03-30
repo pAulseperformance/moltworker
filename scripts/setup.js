@@ -80,7 +80,7 @@ async function main() {
     const cfAiKey = await ask('Enter CLOUDFLARE_AI_GATEWAY_API_KEY: ');
     const cfAiAccount = await ask('Enter CF_AI_GATEWAY_ACCOUNT_ID: ');
     const cfAiGateway = await ask('Enter CF_AI_GATEWAY_GATEWAY_ID: ');
-    const cfAiModel = await ask('Enter CF_AI_GATEWAY_MODEL (e.g. anthropic/claude-3-5-sonnet-20241022 या openai/gpt-4o): ');
+    const cfAiModel = await ask('Enter CF_AI_GATEWAY_MODEL (e.g. anthropic/claude-3-5-sonnet-20241022 or workers-ai/@cf/meta/llama-2-7b-chat-int8): ');
     if (cfAiKey) await putSecret('CLOUDFLARE_AI_GATEWAY_API_KEY', cfAiKey.trim());
     if (cfAiAccount) await putSecret('CF_AI_GATEWAY_ACCOUNT_ID', cfAiAccount.trim());
     if (cfAiGateway) await putSecret('CF_AI_GATEWAY_GATEWAY_ID', cfAiGateway.trim());
