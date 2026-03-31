@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import * as readline from 'readline';
 import crypto from 'crypto';
 
@@ -121,7 +121,7 @@ async function main() {
   let baseUrl = '<YOUR_CLOUDFLARE_WORKER_URL>';
   console.log(`\n> npx wrangler deploy`);
   await new Promise((resolve, reject) => {
-    const spawn = require('child_process').spawn;
+
     const deployProc = spawn('npx', ['wrangler', 'deploy'], { stdio: ['ignore', 'pipe', 'pipe'] });
     
     deployProc.stdout.on('data', (data) => {
