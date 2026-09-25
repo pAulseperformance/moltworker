@@ -57,6 +57,7 @@ export async function syncToR2(sandbox: Sandbox, env: MoltbotEnv): Promise<SyncR
     { timeout: 120000 },
   );
   if (!configResult.success) {
+    console.error('[SYNC] rclone sync failed:', configResult.stderr);
     return {
       success: false,
       error: 'Config sync failed',

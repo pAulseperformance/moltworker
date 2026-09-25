@@ -47,6 +47,22 @@ function transformErrorMessage(message: string, host: string): string {
   return message;
 }
 
+function isValidWebSocketCloseCode(code: number): boolean {
+  if (code === 1000) {
+    return true;
+  }
+
+  if (code >= 1001 && code <= 1014 && code !== 1004 && code !== 1005 && code !== 1006) {
+    return true;
+  }
+
+  return code >= 3000 && code <= 4999;
+}
+
+function getRelayCloseCode(code: number): number {
+  return isValidWebSocketCloseCode(code) ? code : 1011;
+}
+
 export { Sandbox };
 
 /**
@@ -247,9 +263,11 @@ app.all('*', async (c) => {
   const request = c.req.raw;
   const url = new URL(request.url);
 
+  const isWebSocketRequest = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
+  
   // Auto-inject gateway token via HTTP redirect for known UI paths
   const pathname = url.pathname;
-  if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token') && (pathname === '/' || pathname === '/chat')) {
+  if (!isWebSocketRequest && c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token') && (pathname === '/' || pathname === '/chat')) {
     const redirectUrl = new URL(url.toString());
     redirectUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
     return c.redirect(redirectUrl.toString(), 302);
@@ -262,7 +280,6 @@ app.all('*', async (c) => {
   const isGatewayReady = existingProcess !== null && existingProcess.status === 'running';
 
   // For browser requests (non-WebSocket, non-API), show loading page if gateway isn't ready
-  const isWebSocketRequest = request.headers.get('Upgrade')?.toLowerCase() === 'websocket';
   const acceptsHtml = request.headers.get('Accept')?.includes('text/html');
 
   if (!isGatewayReady && !isWebSocketRequest && acceptsHtml) {
@@ -314,8 +331,26 @@ app.all('*', async (c) => {
     }
 
     // Get WebSocket connection to the container
-    const containerResponse = await sandbox.wsConnect(request, MOLTBOT_PORT);
-    console.log('[WS] wsConnect response status:', containerResponse.status);
+    const wsUrl = new URL(request.url);
+    if (c.env.MOLTBOT_GATEWAY_TOKEN && !wsUrl.searchParams.has('token')) {
+      wsUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
+    }
+    const wsRequest = new Request(wsUrl.toString(), request);
+    
+    console.log('[WS] Connecting to URL:', wsUrl.toString());
+    console.log('[WS] Request headers:', Object.fromEntries(wsRequest.headers.entries()));
+
+    let containerResponse;
+    try {
+      // In Cloudflare Workers, `new Request` might strip the internal upgrade info.
+      // If so, we pass the original request but override the URL inside wsConnect!
+      // Wait, `sandbox.wsConnect` takes (Request, Port). We might have broken it.
+      containerResponse = await sandbox.wsConnect(wsRequest, MOLTBOT_PORT);
+      console.log('[WS] wsConnect response status:', containerResponse.status);
+    } catch (e: any) {
+      console.error('[WS] wsConnect error:', e.message);
+      throw e;
+    }
 
     // Get the container-side WebSocket
     const containerWs = containerResponse.webSocket;
@@ -404,7 +439,11 @@ app.all('*', async (c) => {
       if (debugLogs) {
         console.log('[WS] Client closed:', event.code, event.reason);
       }
-      containerWs.close(event.code, event.reason);
+      const closeCode = getRelayCloseCode(event.code);
+      if (debugLogs && closeCode !== event.code) {
+        console.log('[WS] Rewriting invalid client close code:', event.code, '->', closeCode);
+      }
+      containerWs.close(closeCode, event.reason);
     });
 
     containerWs.addEventListener('close', (event) => {
@@ -416,10 +455,14 @@ app.all('*', async (c) => {
       if (reason.length > 123) {
         reason = reason.slice(0, 120) + '...';
       }
+      const closeCode = getRelayCloseCode(event.code);
       if (debugLogs) {
         console.log('[WS] Transformed close reason:', reason);
+        if (closeCode !== event.code) {
+          console.log('[WS] Rewriting invalid container close code:', event.code, '->', closeCode);
+        }
       }
-      serverWs.close(event.code, reason);
+      serverWs.close(closeCode, reason);
     });
 
     // Handle errors

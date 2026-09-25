@@ -191,7 +191,11 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
     const apiKey = process.env.CLOUDFLARE_AI_GATEWAY_API_KEY;
 
     let baseUrl;
-    if (accountId && gatewayId) {
+    if (gwProvider === 'workers-ai' && (process.env.CF_ACCOUNT_ID || process.env.CF_AI_GATEWAY_ACCOUNT_ID)) {
+        // ALWAYS use the native Cloudflare API for Workers AI since AI Gateway is rejecting user tokens (Error 2009 Unauthorized)
+        const accId = process.env.CF_ACCOUNT_ID || process.env.CF_AI_GATEWAY_ACCOUNT_ID;
+        baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + accId + '/ai/v1';
+    } else if (accountId && gatewayId) {
         baseUrl = 'https://gateway.ai.cloudflare.com/v1/' + accountId + '/' + gatewayId + '/' + gwProvider;
         if (gwProvider === 'workers-ai') baseUrl += '/v1';
     } else if (gwProvider === 'workers-ai' && process.env.CF_ACCOUNT_ID) {
@@ -210,6 +214,22 @@ if (process.env.CF_AI_GATEWAY_MODEL) {
             api: api,
             models: [{ id: modelId, name: modelId, contextWindow: 131072, maxTokens: 8192 }],
         };
+
+        config.auth = config.auth || {};
+        config.auth.profiles = config.auth.profiles || {};
+        config.auth.profiles[providerName + ':default'] = {
+            provider: providerName,
+            mode: 'api_key'
+        };
+
+        // Clean up broken provider created by 'onboard' since we bypass keychain
+        if (config.auth.profiles['cloudflare-ai-gateway:default']) {
+            delete config.auth.profiles['cloudflare-ai-gateway:default'];
+        }
+        if (config.models && config.models.providers && config.models.providers['cloudflare-ai-gateway']) {
+            delete config.models.providers['cloudflare-ai-gateway'];
+        }
+
         config.agents = config.agents || {};
         config.agents.defaults = config.agents.defaults || {};
         config.agents.defaults.model = { primary: providerName + '/' + modelId };
